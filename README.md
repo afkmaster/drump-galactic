@@ -1,0 +1,2 @@
+Coding assignment for AdRoll, Drump Galactic
+If called directly from the terminal: python elevator.py, the default file used is elevator_traffic_0.txt, however, any desired text file can be specified after, python elevator.py <yourtextfilename>
