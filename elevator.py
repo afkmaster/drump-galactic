@@ -117,9 +117,9 @@ class Elevator(object):
 			else:
 				if floor > self.currentFloor and floor != None:
 					self.currentFloor += FLOORS_PER_SECOND
-					print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
 				elif floor < self.currentFloor and floor != None:
 					self.currentFloor -= FLOORS_PER_SECOND
+				if floor != None:
 					print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
 
 		for id, guest in self.guests.items():
@@ -252,6 +252,7 @@ class Simulator(object):
 		standardDeviation = self.getStandardDeviation()
 		print 'Average wait time for each guest is', waitTime, 'seconds'
 		print 'Standard deviation', standardDeviation
+
 	def getAverageWaitTime(self):
 		total = 0
 		for guest in self.guests:
@@ -265,6 +266,7 @@ class Simulator(object):
 		for time in waitTime:
 			total += (time - average)*(time - average)
 		return math.sqrt(total/len(self.guests))
+
 def parseData(inputFile):
 	f = open(inputFile, 'r')
 	inputData = []
