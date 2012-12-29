@@ -5,7 +5,6 @@ DEFAULT_FILE = './elevator_traffic_0.txt'
 DOOR_OPEN_TIME = 10
 FLOORS_PER_SECOND = 1
 INITIAL_FLOOR = 1
-WAIT_TIME = 1
 INFINITY = 9999
 BUSY_FLOORS = {0:0, 1:1, 10:0, 100:0} #key is each floor, value specifies whether an elevator has been assigned to that floor or not
 
@@ -26,19 +25,17 @@ class Elevator(object):
 		if self.isGoingUp != None:
 			if self.isGoingUp:
 				self.currentFloor += FLOORS_PER_SECOND
-				#print 'Elevator', self.id, 'going up to floor', self.currentFloor
+				print 'Elevator', self.id, 'going up to floor', self.currentFloor
 			else:
 				self.currentFloor -= FLOORS_PER_SECOND
-				#print 'Elevator', self.id, 'going down to floor', self.currentFloor
+				print 'Elevator', self.id, 'going down to floor', self.currentFloor
 
-	def addGuests(self):
-		for id, guest in self.guestsQueue.items():
-			self.guests[guest.id] = guest
-			guest.addElevator(self)
-			if guest.destinationFloor not in self.destinationFloors:
-				self.destinationFloors.append(guest.destinationFloor)
-			#print 'Adding Guest', guest.id, 'to Elevator', self.id, 'destination floor', guest.destinationFloor
-			del self.guestsQueue[id]
+	def addGuest(self, guest):
+		self.guests[guest.id] = guest
+		guest.addElevator(self)
+		if guest.destinationFloor not in self.destinationFloors:
+			self.destinationFloors.append(guest.destinationFloor)
+		print 'Adding Guest', guest.id, 'to Elevator', self.id, 'destination floor', guest.destinationFloor
 
 		self.isGoingUp = self.guests[self.guests.keys()[0]].isGoingUp()
 		self.destinationFloors.sort(reverse = not self.isGoingUp)
@@ -53,6 +50,13 @@ class Elevator(object):
 
 		#print 'Adding Guest', guest.id, 'to Elevator', self.id, 'guest queue'
 
+	def addFloorToDestinations(self, floor):
+		self.isActive = True
+		if floor not in self.destinationFloors:
+			self.destinationFloors.append(floor)
+		self.isGoingUp = self.currentFloor < floor
+		self.destinationFloors.sort(reverse = not self.isGoingUp)
+
 	def openDoor(self):
 		self.DoorIsOpen = True
 
@@ -61,7 +65,7 @@ class Elevator(object):
 
 	def wait(self):
 		if self.doorOpenTime < DOOR_OPEN_TIME:
-			self.doorOpenTime += WAIT_TIME
+			self.doorOpenTime += FLOORS_PER_SECOND
 		else:
 			self.doorOpenTime = 0
 
@@ -83,20 +87,31 @@ class Elevator(object):
 						closestFloor = floor
 		return closestFloor
 
-	def handleAction(self):
+	def handleAction(self, guestQueue):
 		if self.currentFloor in self.destinationFloors:
 			if self.doorOpenTime == 0:
-				pass
-				#print 'Elevator', self.id, 'arrived on destination floor', self.currentFloor
+				print 'Elevator', self.id, 'arrived on destination floor', self.currentFloor
 			self.destinationFloors.remove(self.currentFloor)
 
-		for id, guest in self.guestsQueue.items():
+		for id, guest in guestQueue.items():
 			if guest.startFloor == self.currentFloor:
-				self.openDoor()
-				self.addGuests()
-				break
+					self.openDoor()
+					self.addGuest(guest)
+					del guestQueue[id]
+				if self.isActive:
+					if self.isGoingUp and guest.isGoingUp():
+				else:
+					self.isGoingUp = guest.isGoingUp()
 
-		if self.guests or self.guestsQueue:
+
+		for id, guest in self.guests.items():
+			if guest.destinationFloor == self.currentFloor:
+				print 'Guest',guest ,'leaving elevator', self.id
+				del self.guests[id]
+			else:
+				guest.wait()
+
+		if self.guests or self.destinationFloors:
 			self.isActive = True
 			BUSY_FLOORS[self.assignedBusyFloor] = 0
 		else:
@@ -106,31 +121,24 @@ class Elevator(object):
 			if floor != None:
 				BUSY_FLOORS[floor] = 1
 				self.assignedBusyFloor = floor
-				
+
 		if self.DoorIsOpen:
 			self.wait()
 			if self.doorOpenTime == 0:
 				self.closeDoor()
-		else:
+
+		if not self.DoorIsOpen:
 			if self.isActive:
 				self.goUpOrDown()
 			else:
 				if floor > self.currentFloor and floor != None:
 					self.currentFloor += FLOORS_PER_SECOND
-					#print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
+					print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
 				elif floor < self.currentFloor and floor != None:
 					self.currentFloor -= FLOORS_PER_SECOND
-					#print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
+					print 'Elevator', self.id, 'is idle and moving to assigned busy floor', floor
 
-		for id, guest in self.guests.items():
-			if guest.destinationFloor == self.currentFloor:
-				print 'Guest',guest ,'leaving elevator', self.id
-				del self.guests[id]
-			else:
-				guest.wait()
 
-		for guest in self.guestsQueue.values():
-			guest.wait()
 
 	def __str__(self):
 		return "ID: " + str(self.id) + " Current Floor: " + str(self.currentFloor)
@@ -149,7 +157,7 @@ class Guest(object):
 		return self.destinationFloor > self.startFloor
 
 	def wait(self):
-		self.waitTime += WAIT_TIME
+		self.waitTime += FLOORS_PER_SECOND
 		if self.onElevator:
 			pass
 			#print 'Guest', self.id, 'going to floor', self.destinationFloor, 'waiting for', self.waitTime, 'seconds, on elevator', self.onElevator
@@ -185,16 +193,16 @@ class Simulator(object):
 
 	def allElevatorsEmpty(self):
 		for elevator in self.elevators:
-			if elevator.guests or elevator.guestsQueue:
+			if elevator.guests or self.activeGuests:
 				return True
 		return False
 
 	def findBestElevator(self, guest):
-		bestElevator = None
 		shortestWait = INFINITY
+		bestElevator = None
 		for elevator in self.elevators:
 			if elevator.isActive:
-				if (len(elevator.guestsQueue) > 0 and guest.isGoingUp() != elevator.guestsQueue[elevator.guestsQueue.keys()[0]].isGoingUp()):
+				if (len(elevator.destinationFloors) > 0 and guest.isGoingUp() != elevator.isGoingUp):
 					continue
 				if guest.isGoingUp() and elevator.isGoingUp and elevator.currentFloor <= guest.startFloor:
 					if (guest.startFloor - elevator.currentFloor) < shortestWait:
@@ -217,7 +225,8 @@ class Simulator(object):
 
 	def run(self):
 		counter = 0
-		while counter < len(self.guests) or self.allElevatorsEmpty():
+		while counter < 40:
+		#len(self.guests) or self.allElevatorsEmpty():
 			#for guests that have called the elevator
 			for guest in self.guests:
 				if guest.startTime == counter:
@@ -226,13 +235,17 @@ class Simulator(object):
 			for id, guest in self.activeGuests.items():
 				elevator = self.findBestElevator(guest)
 				if elevator:
-					elevator.addGuestToQueue(guest)
-					del self.activeGuests[id]
+					print guest.startFloor
+					elevator.addFloorToDestinations(guest.startFloor)
 				else:
 					guest.wait()
 
 			for elevator in self.elevators:
-				elevator.handleAction()
+				print 'ELEVATOR', elevator.id, elevator.destinationFloors
+				elevator.handleAction(self.activeGuests)
+
+			for guest in self.activeGuests.values():
+				guest.wait()
 
 			counter += 1
 
@@ -240,6 +253,7 @@ class Simulator(object):
 		standardDeviation = self.getStandardDeviation()
 		print 'Average wait time for each guest is', waitTime, 'seconds'
 		print 'Standard deviation', standardDeviation
+
 	def getAverageWaitTime(self):
 		total = 0
 		for guest in self.guests:
@@ -253,6 +267,7 @@ class Simulator(object):
 		for time in waitTime:
 			total += (time - average)*(time - average)
 		return math.sqrt(total/len(self.guests))
+
 def parseData(inputFile):
 	f = open(inputFile, 'r')
 	inputData = []
